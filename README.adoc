@@ -1,0 +1,149 @@
+# Calling JavaScript from C++
+Inside of a QML application, you can of course use C++ in the back-end of the application, but also you can add sore reactivity through JavaScript.
+
+:toc:
+:sectnums:
+
+== Introduction
+The QML language use a JSON-like syntax and allows various expressions and methods to be defined as JavaScript functions. It also allows user to import JavaScript files and use the functionality those imports provide.
+
+NOTE: This allows developer and designers to lverage the knowledge they have of JavaScript to quickly develop bother user-interfaces and application logic.
+
+=== JavaScript expressions
+QML has a deep JavaScript integration, and allowd link:https://doc.qt.io/qt-6/qtqml-syntax-objectattributes.html#signal-attributes[signal handlers] and link:https://doc.qt.io/qt-6/qtqml-syntax-objectattributes.html#method-attributes[methods] to be defined in JavaScript. Another core feature of QML is the ability to specify and enforce relationships between object properties using link:https://doc.qt.io/qt-6/qtqml-syntax-propertybinding.html[property bindings] which are also defined using JavaScript.
+
+NOTE: See the documentation page titled link:https://doc.qt.io/qt-6/qtqml-javascript-expressions.html[JavaScript Expressions in QML documents] for more information about using JavaScript expression in QML.
+
+=== Dynamic QML Object creation from JavaScript
+QML supports the dynamic creation of objects from within JavaScript. This is useful to delay instantiation of objects until necessary, thereby improving application startup time. It also allows visual objects to be dynamically created and added to the scene in reaction to user input or other events. This functionnality can be used in two main ways:
+
+* Object can be created dynamically from JavaScript in an imperative way using link:https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html[dynamic creation of objects], this can be useful, for example, when QML is used ad an application scripting language.
+
+NOTE: When creating a user interfaces, the preferred way of creating objects dynamically is to use declarative constructs as these integrate best with the QML engine and tooling. Various types exist to enable this functionality such as the link:https://doc.qt.io/qt-6/qml-qtquick-loader.html[Loader], link:https://doc.qt.io/qt-6/qml-qtqml-models-instantiator.html[Instantiator], link:https://doc.qt.io/qt-6/qml-qtquick-repeater.html[Repeater] types.
+
+=== JavaScript Resources
+Application logic defined in JavaScript functions may be separated into separate JavaScript files known as JavaScript resources. There are several different kinds of JavaScript resources, with different semantics.
+
+NOTE: See the documentation page titled link:https://doc.qt.io/qt-6/qtqml-javascript-resources.html[Defining JavaScript Resources in QML] for more information about defining JavaScript resources for QML
+
+=== JavaScript imports
+A QML document may import JavaScript resources, and JavaScript resources may import other JavaScript resources as well as QML modules. This allows an application developer to provide application logic in modular, self-contained files.
+
+NOTE: See the documentation page titled link:https://doc.qt.io/qt-6/qtqml-javascript-imports.html[Importing JavaScript Resources] for more information on how to import JavaScript resources and how to use the functionality they provide.
+
+=== JavaScript Host Environment
+The QML engine provides a JavaScript environment that has some differences to the JavaScript environment provided by a web browser. Certain limitations apply to code running in the environment, and the QML engine provides various objects in the root context which may be unfamiliar to JavaScript developers.
+
+NOTE: These limitations and extensions are documented in the description of the link:https://doc.qt.io/qt-6/qtqml-javascript-hostenvironment.html[JavaScript Host Environment] provided by the QML engine.
+
+NOTE: There is also an in depth description of the link:https://doc.qt.io/qt-6/qtqml-javascript-memory.html[memory management] employed by the JavaScript engine.
+
+=== Configuring the JavaScript engine
+For specific use cases you may want to override some of the parameters the JavaScript engine uses for handling memory and compiling JavaScript, see link:https://doc.qt.io/qt-6/qtqml-javascript-finetuning.html[Configuring the JavaScript engine] for more information about these parameters.
+
+== Example of JavaScript use
+In order to made an example regarding of the application, we'll do a small application that combines both JavaScript and QML to have a better user reaction in this application.
+
+IMPORTANT: Something to note is that this method / technique is not something that is used everytime, because of all the limitations that JavaScript is giving, you should always forward to the C++ instead.
+
+=== Create the C++ class
+So in order to fetch some values from the back-end of the application, we'll create a class named `QmlJsCaller` that will be prototyped this way:
+
+```cpp
+class QmlJsCaller : public QObject
+{
+    Q_OBJECT
+public:
+    explicit QmlJsCaller(QObject *parent = nullptr);
+    Q_INVOKABLE void cppMethod(const QString &param);
+    void setQmlRootObject(QObject *ptr);
+private:
+    void callJSMethod(const QString &param);
+private:
+    QObject *_qmlRootObject;
+};
+```
+This header of the `QmlJsCaller` contains some method, actually, the method named `cppMethod` that is marked as `Q_INVOKABLE` will just call the `callJSMethod` slot, that will then be recovered by the QML part of the application.that means the `cppMethod` slot is gonna be called by a slot that will remains to the QML part of the app, and then the `cppSlot` of the application will then call the `callJSMethod` function:
+
+```cpp
+void QmlJsCaller::cppMethod(const QString &param) {
+    qDebug() << "This is C++ talking, calling QML JavaScript function";
+    callJSMethod(param);
+}
+```
+Then we should have a way to get the root context from outside the class, by just defining the method `setQmlRootObject` like so:
+```cpp
+void QmlJsCaller::setQmlRootObject(QObject *ptr) {
+    _qmlRootObject = ptr;
+}
+```
+We now want to get the return value and the parameter on the JavaScript inside of the `callJSMethod` method like this:
+```cpp
+void QmlJsCaller::callJSMethod(const QString &param) {
+    QVariant returnedValue;
+    QVariant cppParameter = QVariant::fromValue(param);
+}
+```
+Here we are converting the parameter named `param` as a `QVariant`, a `QVariant` is a union-like object that can convert almost any C++ type. Also the `returnedValue` variable will then be set once the JavaScript method has been called. In order to call the method we'll use the `QMetaObject::invokeMethod()` in order to call the JavaScript function like this:
+```cpp
+void QmlJsCaller::callJSMethod(const QString &param) {
+    QVariant returnedValue;
+    QVariant cppParameter = QVariant::fromValue(param);
+
+    // Calling the javaScript function from C++
+    QMetaObject::invokeMethod(_qmlRootObject, "qmlJSFunction"
+                              , Q_RETURN_ARG(QVariant, returnedValue)
+                              , Q_ARG(QVariant, cppParameter));
+
+    qDebug() << "C++ talking, sone calling QML JavaScript, the return value is: "
+             << returnedValue.toString();
+}
+```
+
+* `Q_ARG`: This macro takes a _type_ and a _value_ of that type and returns a `QMetaMethodArgument`, which can be passed to the template named link:https://doc.qt.io/qt-6/qmetaobject.html#invokeMethod[QMetaObject::invokeMethod] with Args &&... arguments.
+* `Q_RETURN_ARG`: This macro is coming from the `QMetaObject` and takes a _Type_ and a non-const reference to a _value_ of that type and returns a `QMetaMethodReturnArgument`, which can be passed to the template `QMetaObject::invokeMethod`() with Args && ... arguments.
+
+After the `callJSMethod` function, we need to make the `QML` part of the application:
+```json
+Window {
+    width: 640
+    height: 480
+    visible: true
+    title: qsTr("Call QML from C++")
+
+    function qmlJSFunction(param) {
+        console.log("QML Talking, C++ called me with following parameter:" + param + "returning back something")
+        return "This is QML, over to you C++. Thanks for the call !!"
+    }
+
+    Button {
+        id: mButtonId
+        text: qsTr("Call QML function from C++")
+        onClicked: {
+            QmlJsCaller.cppMethod("QML Calling....");
+        }
+    }
+}
+```
+As you can see, you are making a function named `qmlJSFunction` that is the same name and the function written out to the `QMetaObject::invokeMethod`.
+
+Another component being a simple `Button` that is going to call the `cppMethod` being as a `Q_INVOKABLE` method inside of the header file of the `QmlJsCaller` class.
+
+NOTE: Something else to do also, is to specify the root context of this file, as a JavaScript function has to be called inside of a created root context.
+
+All that being said, you have to go to the `main.cpp` file and setting the qml root context of the object by using the `setQmlRootContext` of the application:
+
+```cpp
+int main(int argc, char **argv) {
+...
+    if (engine.rootObjects().isEmpty()) {
+        return -1;
+    }
+    auto rootObjects = engine.rootObjects().at(0);
+    caller.setQmlRootObject(rootObjects);
+
+    return app.exec();
+}
+```
+
+IMPORTANT: However, you just saw how to call the JS from the C++ side, but it's not really considered as a good practice, try to stick with Cpp and QML, the Qt part should only be used. It's called a bad design. QML is design to be an user experience user, and that means you shouldn't design your application well. QML is design to be in interface layer.
